@@ -1,0 +1,13 @@
+# Referensi milik dosen, tidak ikut diunggah
+KubusCeria_Maretha.html
+
+# Rahasia (jangan pernah di-commit)
+.env
+.env.*
+*secret*
+
+# File sistem / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
