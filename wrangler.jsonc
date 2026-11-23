@@ -1,0 +1,9 @@
+// Konfigurasi deploy Cloudflare Workers (dipakai otomatis saat push ke GitHub).
+// Hanya isi folder "deploy" yang dipublikasikan; file SQL dan dokumen tidak ikut.
+{
+  "name": "bantal-merah-putih",        // harus sama dengan nama Worker di Cloudflare
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./deploy"
+  }
+}
