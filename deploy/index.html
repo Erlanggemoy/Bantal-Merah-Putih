@@ -312,7 +312,6 @@ async function apiRevokeCode(c,reason){
  if(String(reason).trim().length<5)throw new Error('Tulis alasan minimal 5 karakter.');
  await call(sb.rpc('revoke_code',{p_code_id:c.id,p_reason:reason.trim()})); return loadSale(c.sale_id);
 }
-const apiActivate=(raw,dev)=>call(sb.rpc('activate_code',{p_code:raw,p_device_id:dev}));
 
 /* ============================================================
    2. TAMPILAN
@@ -353,19 +352,17 @@ function render(){
  </aside>
  <div class="main-shell">
   <header class="topbar">${brand()}<div class="crumb">Ruang penjual / <strong>${title}</strong></div>
-   <div class="top-actions">${isAdmin()?`<button class="btn sm" data-act="sim">${icon('phone')}<span class="btn-text">Uji aktivasi</span></button>`:''}
-   <button class="avatar" data-act="account" aria-label="Akun ${esc(me().name)}">${esc((me().name||me().email).slice(0,2).toUpperCase())}</button></div>
+   <div class="top-actions"><button class="avatar" data-act="account" aria-label="Akun ${esc(me().name)}">${esc((me().name||me().email).slice(0,2).toUpperCase())}</button></div>
   </header>
   <main class="workspace">${content}</main>
  </div>
  <nav class="bottom-nav" aria-label="Menu bawah">
   <button class="${ui.view==='penjualan'?'selected':''}" data-go="penjualan">${icon('ticket')}Penjualan</button>
-  ${isAdmin()?`<button data-act="sim">${icon('phone')}Uji aktivasi</button><button class="${ui.view==='pengaturan'?'selected':''}" data-go="pengaturan">${icon('settings')}Pengaturan</button>`:''}
+  ${isAdmin()?`<button class="${ui.view==='pengaturan'?'selected':''}" data-go="pengaturan">${icon('settings')}Pengaturan</button>`:''}
   <button data-act="help">${icon('help')}Bantuan</button>
  </nav>`;
  $$('[data-go]').forEach(b=>b.onclick=()=>{if(location.hash==='#'+b.dataset.go)route();else location.hash=b.dataset.go;});
  $$('[data-act="help"]').forEach(b=>b.onclick=helpModal);
- $$('[data-act="sim"]').forEach(b=>b.onclick=()=>simModal());
  $('[data-act="account"]').onclick=accountModal;
  if(ui.view==='penjualan')bindSales();else bindSettings();
 }
@@ -553,29 +550,10 @@ function manageModal(id){
   catch(err){if($('#manage-error')){$('#manage-error').innerHTML=errorBox(friendlyError(err));busy(btn,false);}}};
 }
 
-/* ---------- Uji aktivasi (admin) — memanggil fungsi yang sama dengan aplikasi BDT (Expo) ---------- */
-function simModal(){
- if(!isAdmin())return;
- modal('Uji aktivasi','Memanggil fungsi activate_code, sama seperti aplikasi BDT.',`
- <div class="alert warn"><b>Ini aktivasi sungguhan.</b> Kode yang berhasil diaktifkan di sini terikat ke perangkat uji dan tidak bisa dipakai pembeli lagi. Gunakan hanya untuk kode uji, lalu cabut atau ganti kodenya lewat Kelola.</div>
- <form id="sim-form"><div class="field"><label for="sim-code">Kode aktivasi atau isi QR</label><input id="sim-code" class="code" style="font-size:16px;text-transform:uppercase" autocomplete="off" spellcheck="false" placeholder="BDT-XXXX-XXXX" required></div>
- <div class="field"><label for="sim-dev">Perangkat</label><select id="sim-dev"><option value="UJI-ADMIN-HP-A">HP uji A</option><option value="UJI-ADMIN-HP-B">HP uji B</option></select><div class="hint">Coba aktifkan kode yang sama di HP A lalu HP B.</div></div>
- <button class="btn primary block" type="submit">${icon('check')}Aktifkan</button></form><div id="sim-out"></div>`);
- $('#sim-form').onsubmit=async e=>{e.preventDefault();const code=$('#sim-code').value.trim(),dev=$('#sim-dev').value,btn=$('[type=submit]',e.target);
-  if(!code)return;busy(btn,true,'Mengirim…');
-  try{const r=await apiActivate(code,dev);
-   const msg={ok:r.reactivated?'Berhasil (perangkat yang sama, aktif kembali).':'Berhasil! Permainan terbuka di aplikasi.',used:'Ditolak: kode sudah dipakai di perangkat lain.',invalid:'Ditolak: kode tidak ditemukan atau sudah dicabut.',rate_limited:'Ditolak: terlalu banyak percobaan gagal. Tunggu 1 menit.',invalid_device:'Ditolak: ID perangkat tidak valid.'}[r.status]||r.status;
-   if(!$('#sim-out'))return;
-   $('#sim-out').innerHTML=`<div class="${r.status==='ok'?'alert':'error'}" style="margin-top:14px">${esc(msg)}</div><pre class="json">→ activate_code\n${esc(JSON.stringify({p_code:code,p_device_id:dev},null,1))}\n\n← ${esc(JSON.stringify(r,null,1))}</pre>`;
-   if(r.status==='ok'){const s=db.sales.find(x=>x.invoice===r.nota);if(s){await loadSale(s.id);refreshSales();}}}
-  catch(err){if($('#sim-out'))$('#sim-out').innerHTML=errorBox(friendlyError(err));}
-  finally{busy(btn,false);}};
-}
-
 /* ---------- Pengaturan (admin) ---------- */
 function settingsView(){const s=db.settings;
- return `<div class="page-heading"><div><h1>Pengaturan</h1><p class="muted">Info toko, harga, nota, dan akun penjual.</p></div></div>
- <div class="row-two"><section class="panel"><div class="panel-head"><h2>Toko & nota</h2>${icon('print')}</div>
+ return `<div class="page-heading"><div><h1>Pengaturan</h1><p class="muted">Info toko, harga, dan nota.</p></div></div>
+ <div style="max-width:680px"><section class="panel"><div class="panel-head"><h2>Toko & nota</h2>${icon('print')}</div>
  <form id="set-form" class="panel-body">
   <div class="field"><label for="s-name">Nama toko</label><input id="s-name" maxlength="40" value="${esc(s.shopName)}" required></div>
   <div class="form-row"><div class="field"><label for="s-addr">Kota / alamat</label><input id="s-addr" maxlength="60" value="${esc(s.address)}"></div><div class="field"><label for="s-phone">No. WhatsApp</label><input id="s-phone" maxlength="20" value="${esc(s.phone)}"></div></div>
@@ -583,30 +561,8 @@ function settingsView(){const s=db.settings;
   <div class="field"><label for="s-paper">Lebar kertas nota</label><select id="s-paper"><option value="58" ${s.paper==58?'selected':''}>57/58 mm (rol 57 × 50)</option><option value="80" ${s.paper==80?'selected':''}>80 mm</option></select></div></div>
   <div class="field"><label for="s-prefix">Awalan nomor nota</label><input id="s-prefix" maxlength="6" value="${esc(s.prefix)}" pattern="[A-Za-z0-9]+"><div class="hint">Contoh hasil: ${esc(s.prefix)}-${dayKey(Date.now()).replace(/-/g,'')}-0001</div></div>
   <div class="field"><label for="s-footer">Teks penutup nota</label><input id="s-footer" maxlength="80" value="${esc(s.footer)}"></div>
-  <div id="set-error"></div><button class="btn primary" type="submit">Simpan pengaturan</button></form></section>
- <div><section class="panel"><div class="panel-head"><div><h2>Akun penjual</h2><p>Penjual hanya melihat penjualannya sendiri.</p></div></div>
-  <div class="panel-body"><div id="users"><p class="small muted">Memuat akun…</p></div>
-  <div class="alert" style="margin-top:16px"><b>Menambah penjual baru</b><ol style="margin:6px 0 0;padding-left:18px">
-   <li>Buka dashboard Supabase &gt; Authentication &gt; Users &gt; <b>Add user</b> &gt; Create new user, lalu centang <i>Auto Confirm User</i>.</li>
-   <li>Kembali ke halaman ini. Akun baru muncul dengan status nonaktif.</li>
-   <li>Tekan <b>Ubah nama</b> bila perlu, lalu <b>Aktifkan</b>.</li></ol></div></div></section></div></div>`;}
-function renderUsers(){if(!$('#users'))return;
- $('#users').innerHTML=db.users.map(u=>`<div class="user-row"><div><b>${esc(u.name||'(tanpa nama)')}</b><span class="muted">${esc(u.email)} · ${u.role==='admin'?'Admin':'Penjual'}${u.active?'':' · <b>nonaktif</b>'}</span></div>
- <div class="actions"><button class="btn sm ghost" data-rename="${u.id}">Ubah nama</button>${u.id===me().id?'<span class="pill">Anda</span>':`<button class="btn sm ${u.active?'':'primary'}" data-toggle="${u.id}">${u.active?'Nonaktifkan':'Aktifkan'}</button>`}</div></div>`).join('');
- $$('[data-toggle]').forEach(b=>b.onclick=async()=>{const u=db.users.find(x=>x.id===b.dataset.toggle);busy(b,true,'…');
-  try{await call(sb.from('profiles').update({active:!u.active}).eq('id',u.id));await loadUsers();renderUsers();toast(u.name+(!u.active?' diaktifkan.':' dinonaktifkan.'));}
-  catch(err){toast(friendlyError(err));busy(b,false);}});
- $$('[data-rename]').forEach(b=>b.onclick=()=>renameModal(b.dataset.rename));}
-function renameModal(id){const u=db.users.find(x=>x.id===id);if(!u)return;
- modal('Ubah nama',esc(u.email),`<form id="rename-form"><div class="field"><label for="r-name">Nama (tampil sebagai Kasir di nota)</label><input id="r-name" maxlength="40" value="${esc(u.name)}" required></div>
- <div id="rename-error"></div><div class="modal-actions"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" type="submit">Simpan</button></div></form>`);
- $('#rename-form').onsubmit=async e=>{e.preventDefault();const name=$('#r-name').value.trim(),btn=$('[type=submit]',e.target);
-  if(!name){$('#rename-error').innerHTML=errorBox('Nama wajib diisi.');return;}
-  busy(btn,true,'Menyimpan…');
-  try{await call(sb.from('profiles').update({name}).eq('id',u.id));await loadUsers();closeModal();renderUsers();toast('Nama disimpan.');}
-  catch(err){if($('#rename-error')){$('#rename-error').innerHTML=errorBox(friendlyError(err));busy(btn,false);}}};}
+  <div id="set-error"></div><button class="btn primary" type="submit">Simpan pengaturan</button></form></section></div>`;}
 function bindSettings(){
- loadUsers().then(renderUsers,err=>{if($('#users'))$('#users').innerHTML=errorBox(friendlyError(err));});
  $('#set-form').onsubmit=async e=>{e.preventDefault();$('#set-error').innerHTML='';const price=Math.round(Number($('#s-price').value)),prefix=$('#s-prefix').value.trim().toUpperCase();
   if(!$('#s-name').value.trim())return $('#set-error').innerHTML=errorBox('Nama toko wajib diisi.');
   if(!Number.isFinite(price)||price<0||price>100000000)return $('#set-error').innerHTML=errorBox('Harga tidak valid.');
