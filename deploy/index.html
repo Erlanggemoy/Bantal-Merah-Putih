@@ -261,7 +261,7 @@ async function loadUsers(){
 async function loadSales(){
  const all=[],N=1000;
  for(let a=0;;a+=N){
-  const rows=await call(sb.from('sales').select(SALE_COLS).order('created_at',{ascending:false}).order('id').range(a,a+N-1));
+  const rows=await call(sb.from('sales').select(SALE_COLS).is('deleted_at',null).order('created_at',{ascending:false}).order('id').range(a,a+N-1));
   all.push(...rows); if(rows.length<N)break;
  }
  db.sales=all.map(mapSale); db.loadedAt=Date.now();
@@ -304,6 +304,11 @@ async function apiCreateSale(input){
  return loadSale(r.sale_id);
 }
 const apiRecordPrint=s=>call(sb.rpc('record_print',{p_sale_id:s.id}));
+async function apiDeleteSale(s,reason){
+ if(String(reason).trim().length<5)throw new Error('Tulis alasan minimal 5 karakter.');
+ await call(sb.rpc('delete_sale',{p_sale_id:s.id,p_reason:reason.trim()}));
+ db.sales=db.sales.filter(x=>x.id!==s.id);
+}
 async function apiReplaceCode(c,reason){
  if(String(reason).trim().length<5)throw new Error('Tulis alasan minimal 5 karakter.');
  await call(sb.rpc('replace_code',{p_code_id:c.id,p_reason:reason.trim()})); return loadSale(c.sale_id);
@@ -445,7 +450,7 @@ function renderHistory(){
   <td class="c-total num">${money(s.total)}</td>
   <td class="c-code"><span class="code">${c.id?'BDT-••••-'+esc(c.code.slice(-4)):'—'}</span><span class="sub only-m"> · ${s.qty} bantal</span></td>
   <td class="c-status">${statusPill(c.status)}</td>
-  <td class="c-act"><div class="actions"><button class="btn sm" data-receipt="${s.id}">${icon('print')}Nota</button>${isAdmin()&&c.id?`<button class="btn sm ghost" data-manage="${s.id}" aria-label="Kelola kode ${esc(s.invoice)}">${icon('shield')}<span class="only-m">Kelola</span></button>`:''}</div></td></tr>`;}).join('')}
+  <td class="c-act"><div class="actions"><button class="btn sm" data-receipt="${s.id}">${icon('print')}Nota</button>${`<button class="btn sm ghost" data-manage="${s.id}" aria-label="Kelola invoice ${esc(s.invoice)}">${icon('shield')}<span class="only-m">Kelola</span></button>`}</div></td></tr>`;}).join('')}
  </tbody></table></div>
  <div class="pagination"><span>${items.length} transaksi</span><button class="btn sm" id="prev" ${ui.page===0?'disabled':''}>Sebelumnya</button><span>${ui.page+1}/${pages}</span><button class="btn sm" id="next" ${ui.page>=pages-1?'disabled':''}>Berikutnya</button></div>`;
  $$('[data-receipt]').forEach(b=>b.onclick=()=>receiptModal(b.dataset.receipt));
@@ -532,21 +537,28 @@ async function printReceipt(s){
  refreshSales();receiptModal(s.id);
 }
 
-/* ---------- Kelola kode (admin) ---------- */
+/* ---------- Kelola invoice (penjual: miliknya sendiri, admin: semua) ---------- */
 function manageModal(id){
  const s=findSale(id); if(!s)return;
- const c=currentCode(s),hist=codesOf(s);
- modal('Kelola kode',`Nota ${esc(s.invoice)} · kode berakhir ${esc(c.code.slice(-4))}`,`
- <dl class="kv"><dt>Status</dt><dd>${statusPill(c.status)}</dd><dt>Perangkat</dt><dd>${esc(c.device_id||'—')}</dd><dt>Diaktifkan</dt><dd>${fmtDT(c.activated_at)}</dd><dt>Riwayat kode</dt><dd>${hist.length} kode${hist.length>1?' ('+(hist.length-1)+' diganti/dicabut)':''}</dd></dl>
- ${c.status==='revoked'?`<div class="alert">Kode terakhir sudah dicabut${c.reason?': '+esc(c.reason):''}. Penerbitan kode pengganti hanya untuk kode yang masih berlaku.</div><div class="modal-actions"><button type="button" class="btn" data-close>Tutup</button></div>`:`
- <form id="manage-form"><div class="field"><label for="action">Tindakan</label><select id="action"><option value="replace">Terbitkan kode pengganti (misal pembeli ganti HP)</option><option value="revoke">Cabut kode (retur atau kode bocor)</option></select></div>
- <div class="alert warn">Kode lama langsung tidak berlaku. Periksa nota pembelian pembeli terlebih dahulu.</div>
- <div class="field"><label for="reason">Alasan</label><textarea id="reason" maxlength="200" required placeholder="Contoh: pembeli ganti HP, nota asli sudah diperiksa"></textarea></div>
- <div id="manage-error"></div><div class="modal-actions"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" type="submit">Simpan</button></div></form>`}`);
- const f=$('#manage-form'); if(!f)return;
- f.onsubmit=async e=>{e.preventDefault();const btn=$('[type=submit]',f);busy(btn,true,'Menyimpan…');
-  try{if($('#action').value==='replace'){await apiReplaceCode(c,$('#reason').value);refreshSales();receiptModal(s.id,true);toast('Kode pengganti dibuat. Cetak nota baru.');}
-   else{await apiRevokeCode(c,$('#reason').value);refreshSales();closeModal();toast('Kode dicabut.');}}
+ const c=currentCode(s),hist=codesOf(s),live=c.id&&c.status!=='revoked';
+ const opts=(live?`<option value="replace">Terbitkan kode pengganti (misal pembeli ganti HP)</option><option value="revoke">Cabut kode (retur atau kode bocor)</option>`:'')
+  +`<option value="delete">Hapus invoice (salah input / batal)</option>`;
+ modal('Kelola invoice',`Nota ${esc(s.invoice)}${c.id?' · kode berakhir '+esc(c.code.slice(-4)):' · tanpa kode'}`,`
+ <dl class="kv"><dt>Status</dt><dd>${statusPill(c.status)}</dd><dt>Bantal</dt><dd>${s.qty} · ${money(s.total)}</dd>${c.id?`<dt>Perangkat</dt><dd>${esc(c.device_id||'—')}</dd><dt>Diaktifkan</dt><dd>${fmtDT(c.activated_at)}</dd><dt>Riwayat kode</dt><dd>${hist.length} kode${hist.length>1?' ('+(hist.length-1)+' diganti/dicabut)':''}</dd>`:''}</dl>
+ ${c.id&&c.status==='revoked'?`<div class="alert">Kode terakhir sudah dicabut${c.reason?': '+esc(c.reason):''}.</div>`:''}
+ <form id="manage-form"><div class="field"><label for="action">Tindakan</label><select id="action">${opts}</select></div>
+ <div class="alert warn" id="manage-warn"></div>
+ <div class="field"><label for="reason">Alasan</label><textarea id="reason" maxlength="200" required placeholder="Contoh: salah input jumlah, pembeli ganti HP"></textarea></div>
+ <div id="manage-error"></div><div class="modal-actions"><button type="button" class="btn" data-close>Batal</button><button class="btn primary" type="submit" id="manage-submit">Simpan</button></div></form>`);
+ const f=$('#manage-form');
+ const warn={replace:'Kode lama langsung tidak berlaku. Periksa nota pembelian pembeli terlebih dahulu.',revoke:'Kode langsung tidak berlaku dan tidak bisa dipakai lagi.',
+  delete:'Invoice hilang dari riwayat dan statistik'+(live?', dan kodenya ikut dicabut':'')+'. Data tetap diarsipkan di database beserta alasan ini.'};
+ const sync=()=>{const a=$('#action').value;$('#manage-warn').textContent=warn[a];const b=$('#manage-submit');b.textContent=a==='delete'?'Hapus invoice':'Simpan';b.classList.toggle('danger',a==='delete');b.classList.toggle('primary',a!=='delete');};
+ $('#action').onchange=sync;sync();
+ f.onsubmit=async e=>{e.preventDefault();const btn=$('#manage-submit'),a=$('#action').value,reason=$('#reason').value;busy(btn,true,'Menyimpan…');
+  try{if(a==='replace'){await apiReplaceCode(c,reason);refreshSales();receiptModal(s.id,true);toast('Kode pengganti dibuat. Cetak nota baru.');}
+   else if(a==='revoke'){await apiRevokeCode(c,reason);refreshSales();closeModal();toast('Kode dicabut.');}
+   else{await apiDeleteSale(s,reason);refreshSales();closeModal();toast('Invoice '+s.invoice+' dihapus.');}}
   catch(err){if($('#manage-error')){$('#manage-error').innerHTML=errorBox(friendlyError(err));busy(btn,false);}}};
 }
 
@@ -587,7 +599,7 @@ document.addEventListener('keydown',e=>{const r=$('#modal-root');if(!r.firstChil
 
 function helpModal(){modal('Bantuan','Panduan singkat untuk penjual.',`<div class="help">
  <h3>Saat ada pembeli</h3><ol><li>Pilih <b>Paket 4</b>, atau <b>Satuan</b> lalu isi jumlah bantal. Harga terisi otomatis.</li><li>Nama pembeli boleh dikosongkan.</li><li>Tekan <b>Simpan penjualan</b>. Pembelian <b>4 bantal atau lebih</b> mendapat satu kode aktivasi. Pembelian 1–3 bantal hanya mendapat nota.</li><li>Tekan <b>Cetak nota</b>, lalu berikan nota ke pembeli.</li><li>Pembeli membuka aplikasi BDT, memilih Aktivasi, lalu scan QR di nota.</li></ol>
- <h3>Jika ada masalah</h3><ol><li><b>Nota hilang atau rusak:</b> buka riwayat, tekan Nota, lalu cetak salinan. Kode yang sudah aktif tidak dicetak ulang.</li><li><b>Pembeli ganti HP:</b> admin menekan Kelola, lalu terbitkan kode pengganti setelah memeriksa nota.</li><li><b>Retur atau kode bocor:</b> admin mencabut kode dengan alasan.</li><li><b>Status kode belum berubah:</b> tekan <b>Muat ulang</b> di atas riwayat.</li></ol></div>`);}
+ <h3>Jika ada masalah</h3><ol><li><b>Nota hilang atau rusak:</b> buka riwayat, tekan Nota, lalu cetak salinan. Kode yang sudah aktif tidak dicetak ulang.</li><li><b>Pembeli ganti HP:</b> tekan Kelola (ikon perisai), lalu terbitkan kode pengganti setelah memeriksa nota.</li><li><b>Retur atau kode bocor:</b> tekan Kelola, lalu cabut kode dengan alasan.</li><li><b>Salah input atau transaksi batal:</b> tekan Kelola, lalu Hapus invoice dengan alasan. Kodenya ikut dicabut.</li><li><b>Status kode belum berubah:</b> tekan <b>Muat ulang</b> di atas riwayat.</li></ol></div>`);}
 function accountModal(){const u=me();modal(esc(u.name),esc(u.email)+' · '+(u.role==='admin'?'Admin':'Penjual'),`<div class="alert">Sesi login berlaku di perangkat ini sampai Anda keluar.</div><div class="modal-actions"><button class="btn" data-close>Tutup</button><button class="btn danger" id="logout">${icon('logout')}Keluar</button></div>`);
  $('#logout').onclick=async()=>{busy($('#logout'),true,'Keluar…');try{await sb.auth.signOut({scope:'local'});}catch{}
   db.profile=null;db.sales=[];db.users=[];closeModal();history.replaceState(null,'',location.pathname);render();};}
