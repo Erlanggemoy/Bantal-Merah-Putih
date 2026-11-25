@@ -14,6 +14,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #5479ee;outline-offset:2p
 input:focus,select:focus,textarea:focus{outline:3px solid #f3cdd0;border-color:var(--red)}
 .icon{width:20px;height:20px;flex-shrink:0;vertical-align:middle}
 .muted{color:var(--muted)}.small{font-size:13px}.hidden{display:none!important}
+.tagline{margin:0 0 4px;font-size:14px;font-weight:700;color:var(--ink)}.crumb.tagline{margin:0;font-size:16px;font-weight:700;color:var(--ink)}.tagline span{color:var(--red)}
 .eyebrow{font-size:11px;font-weight:750;letter-spacing:1.6px;text-transform:uppercase;color:var(--red)}
 .btn{display:inline-flex;gap:8px;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9px;padding:10px 16px;background:#fff;font-size:14px;font-weight:650;min-height:44px;white-space:nowrap;transition:background .15s}
 .btn:hover{background:#f4f5f8}.btn.primary{background:var(--red);color:#fff;border-color:var(--red)}.btn.primary:hover{background:var(--red-dark)}
@@ -356,7 +357,7 @@ function render(){
   <div class="shop-box"><h3>${esc(db.settings.shopName)}</h3><p class="muted">${esc(db.settings.address)}</p></div>
  </aside>
  <div class="main-shell">
-  <header class="topbar">${brand()}<div class="crumb">Ruang penjual / <strong>${title}</strong></div>
+  <header class="topbar">${brand()}<div class="crumb tagline">Physical <span>Play</span>, Digital <span>Experience</span></div>
    <div class="top-actions"><button class="avatar" data-act="account" aria-label="Akun ${esc(me().name)}">${esc((me().name||me().email).slice(0,2).toUpperCase())}</button></div>
   </header>
   <main class="workspace">${content}</main>
